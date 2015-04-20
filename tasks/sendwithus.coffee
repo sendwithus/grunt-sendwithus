@@ -69,33 +69,36 @@ class Sendwithus
 
     # Get all templates from the API
     getTemplates: () ->
-        deferred = Q.defer()
-
-        @api(['templates']).then(
+        return @api(['templates']).then(
             (data) ->
-                deferred.resolve data
+                return data
 
             (err) ->
                 grunt.log.error "Could not retrieve a list of templates: #{err}"
-                return deferred.reject err
+                return  err
         )
-
-        return deferred.promise
 
     # Get all templates from the API
     getTemplateVersions: (template) ->
-        deferred = Q.defer()
-
-        @api(['templates', template.id, 'versions']).then(
+        return @api(['templates', template.id, 'versions']).then(
             (data) ->
-                deferred.resolve data
+                return data
 
             (err) ->
                 grunt.log.error "Could not retrieve a list of template versions: #{err}"
-                return deferred.reject err
+                return  err
         )
 
-        return deferred.promise
+    # Update template with ID through API
+    updateTemplate: (template) ->
+        return @api(['templates']).then(
+            (data) ->
+                return data
+
+            (err) ->
+                grunt.log.error "Could not retrieve a list of templates: #{err}"
+                return  err
+        )
 
     # Generate an MD5 hash from an arbitrary string
     generateHash: (string) ->
