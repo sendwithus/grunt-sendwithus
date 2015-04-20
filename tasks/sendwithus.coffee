@@ -161,35 +161,28 @@ class Sendwithus
                 # against api template to local indexed template
                 return _.forEach apiTemplate.versions, (apiVersion) =>
                     # Get the indexed template and it's versions if it exists
-                    indexedTemplate = _.find @indexContents, (t) -> return t.id is apiTemplate.id
+                    indexedTemplate = _.find(@indexContents, (t) -> return t.id is apiTemplate.id) or apiTemplate
 
-                    if not indexedTemplate?
-                        indexedTemplate = apiTemplate
+                    # Get the version from the indexedTemplate
+                    version = _.find indexedTemplate.versions, (v) -> return v.id is apiVersion.id
 
-                    version = indexedTemplate.versions.filter((v) -> return v.id is apiVersion.id)[0]
-
-                    # Generate the current version hash
+                    # Generate the current version hash from the api version
                     htmlHash = @generateHash apiVersion.html
                     textHash = @generateHash apiVersion.text
 
-                    # Check if we returned an indexed version
-                    if version and (version.htmlHash? or version.textHash?)
-                        # If the upstream hash is the same as the indexed hash for the version
-                        if htmlHash is version.htmlHash
-                            grunt.log.error "Version with id #{version.id} HTML hash matches upstream, continuing..."
-                        else if textHash is version.textHash
-                            grunt.log.error "Version with id #{version.id} plain text hash matches upstream, continuing..."
-                        else
-                            grunt.log.error "Template hash upstream doesn't match indexed template hash, updating..."
-                            @indexNeedsUpdate = true
+                    # If the upstream hash is the same as the indexed hash for the version
+                    if htmlHash is version.htmlHash
+                        grunt.log.error "Version with id #{version.id} HTML hash matches upstream, continuing..."
+                    else if textHash is version.textHash
+                        grunt.log.error "Version with id #{version.id} plain text hash matches upstream, continuing..."
                     else
-                        grunt.log.error "No indexed version for id #{version.id}, creating one"
+                        grunt.log.error "Template hash upstream doesn't match indexed template hash, updating..."
+                        @indexNeedsUpdate = true
 
-                        # If there isn't an indexed version, use the api version
-                        version = apiVersion
-
-                        version.htmlHash = htmlHash
-                        version.textHash = textHash
+                    if @indexNeedsUpdate
+                        # Assign the HTML and text hashes to the version
+                        version.htmlHash = version.htmlHash or htmlHash
+                        version.textHash = version.textHash or textHash
 
                         delete version.html
                         delete version.text
