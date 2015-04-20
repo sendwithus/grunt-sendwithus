@@ -9,10 +9,14 @@
 pkg       = require '../package.json'
 _         = require 'lodash'
 Q         = require 'q'
-normalize = require('path').normalize
+cheerio   = require 'cheerio'
+crypto    = require 'crypto'
 grunt     = require 'grunt'
 request   = require 'request'
-crypto    = require 'crypto'
+
+path      = require('path')
+normalize = path.normalize
+basename  = path.basename
 
 task =
     name: 'sendwithus'
@@ -30,7 +34,7 @@ requestp = (options) ->
             grunt.log.error 'API request failed with statusCode:', res.statusCode
             deferred.reject err
 
-        deferred.resolve JSON.parse(body)
+        deferred.resolve body
 
     return deferred.promise
 
@@ -43,86 +47,125 @@ class Sendwithus
         @apiKey  = apiKey
 
         @indexFile     = normalize("#{getUserHome()}/#{pkg.name}.json")
-        @indexContents = []
+        @indexContents = @getIndexContents()
 
-        @initIndex()
+    # Generate an MD5 hash from an arbitrary string
+    generateHash: (string) ->
+        return crypto.createHash('md5').update(string).digest('hex')
 
-    buildURL: (segments) ->
-        return "#{@url}#{segments.join "/"}"
+    # build URL from given url path
+    buildURL: (path) ->
+        return "#{@url}#{path}"
 
-    api: (segments) ->
-        requestOptions =
-            url: @buildURL(segments)
+    # API handler
+    api: (path, options = {}) ->
+        url = @buildURL(path)
+        # grunt.log.writeln 'Request url:', url
+        defaultOptions =
+            method: 'GET'
+            url: url
             auth:
                 user: @apiKey
                 password: ''
             headers:
                 accept: 'application/json'
 
+        requestOptions = _.defaults options, defaultOptions
+        console.log requestOptions
+
         return requestp(requestOptions).then(
             (data) ->
                 return data
+
             (err) ->
-                grunt.log.error 'API request failed with statusCode:', res.statusCode
+                grunt.log.error 'API request failed with statusCode:', err.statusCode
                 return err
         )
 
     # Get all templates from the API
     getTemplates: () ->
-        return @api(['templates']).then(
+        path = 'templates'
+
+        return @api(path).then(
             (data) ->
                 return data
 
             (err) ->
                 grunt.log.error "Could not retrieve a list of templates: #{err}"
-                return  err
+                return err
         )
 
     # Get all templates from the API
     getTemplateVersions: (template) ->
-        return @api(['templates', template.id, 'versions']).then(
+        path = "templates/#{template.id}/versions"
+
+        return @api(path).then(
             (data) ->
                 return data
 
             (err) ->
                 grunt.log.error "Could not retrieve a list of template versions: #{err}"
-                return  err
+                return err
         )
 
-    # Update template with ID through API
-    updateTemplate: (template) ->
-        return @api(['templates']).then(
+    # create template in the api, return response
+    createTemplate: (data) ->
+        path    = 'templates'
+        options =
+            method : 'POST'
+            json   : data
+
+        return @api(path, options).then(
             (data) ->
                 return data
 
             (err) ->
-                grunt.log.error "Could not retrieve a list of templates: #{err}"
-                return  err
+                grunt.log.error "Could not update or create template: #{err}"
+                return err
         )
 
-    # Generate an MD5 hash from an arbitrary string
-    generateHash: (string) ->
-        return crypto.createHash('md5').update(string).digest('hex')
+    # update a template given a template id and version id
+    updateTemplateVersion: (templateId, versionId, data) ->
+        path    = "templates/#{templateId}/versions/#{versionId}"
+        options =
+            method : 'POST'
+            json   : data
 
-    # Check that the index file is present
-    initIndex: () ->
-        @indexNeedsUpdate = false
+        return @api(path, options).then(
+            (data) ->
+                return data
 
+            (err) ->
+                grunt.log.error "Could not update or create template: #{err}"
+                return err
+        )
+
+    # Get the contents of the index
+    getIndexContents: () ->
         # Check if the local cache file exists or not
         if not grunt.file.exists @indexFile
             grunt.log.ok "Cache file doesn't exist, creating..."
-            grunt.file.write @indexFile, '[]' # write a blank file
+            grunt.file.write @indexFile, '[]' # write a blank file with an array for valid JSON
         else
             grunt.log.ok 'Cache file exists, continuing...'
 
         # Read the contents of the index file
-        @indexContents = grunt.file.readJSON @indexFile
+        return grunt.file.readJSON @indexFile
+
+    # Write the given contents to the index file
+    writeIndexContents: (contents) ->
+        grunt.log.ok 'Writing index file contents'
+        grunt.file.write @indexFile, JSON.stringify(contents, null, 2)
+
+    # Do index stuff
+    initIndex: () ->
+        @indexNeedsUpdate = false
 
         if @indexContents.length is 0
             grunt.log.ok 'Index is empty, populating for first run...'
 
         # Get all the templates from the api
-        @getTemplates().then (templates) =>
+        return @getTemplates().then (templates) =>
             grunt.log.writeln "#{@indexContents.length} templates in the local index" if @indexContents.length isnt 0
 
             promises = []
@@ -204,50 +247,56 @@ class Sendwithus
 
             if @indexNeedsUpdate
                 @indexContents = templates
-                grunt.log.writeln 'Writing index file contents'
-                grunt.file.write @indexFile, JSON.stringify(@indexContents, null, 2)
+                @writeIndexContents(@indexContents)
 
 
 module.exports = (grunt) ->
-  grunt.registerMultiTask task.name, task.description, () ->
-    done      = @async()
-    fileCount = @filesSrc.length
-    opts      = @data.options
+    grunt.registerMultiTask task.name, task.description, () ->
+        done      = @async()
+        fileCount = @filesSrc.length
+        opts      = @data.options
 
-    # If there's no files, just run the callback
-    done() if fileCount < 1
+        # If there's no files, just run the callback
+        done() if fileCount < 1
 
-    # Check if the apiKey was provided
-    if opts.hasOwnProperty 'apiKey' and opts.apiKey?
-      # return an error message from the plugin
-      return grunt.log.error 'You need to include your sendwithus API key in the task options'
+        # Check if the apiKey was provided
+        if opts.hasOwnProperty 'apiKey' and opts.apiKey?
+            # return an error message from the plugin
+            return grunt.log.error 'API key not found in the task options'
 
-    # Generate a new Sendwithus with the apiKey
-    swu = new Sendwithus(opts.apiKey)
+        # Generate a new Sendwithus instance with the apiKey
+        swu = new Sendwithus(opts.apiKey)
 
-    # Iterate over files to upload
-    # @filesSrc.forEach (filepath) ->
-    #   options = _.clone(opts)
-    #   # options.file = filepath
-    #   options.body = grunt.file.read(filepath)
+        # Iterate over files to upload
+        @filesSrc.forEach (filepath) =>
+            options = _.clone opts
+            html    = grunt.file.read filepath
+            $       = cheerio.load html
 
-    #   # Setup the data to send for the template
-    #   data =
-    #     name    : options.name    or 'grunt-sendwithus'
-    #     subject : options.subject or 'grunt-sendwithus'
-    #     html    : options.body    or '<html><head></head><body></body></html>'
-    #     text    : options.text    or ''
+            # Setup the data to send for the template
+            versionData =
+                name    : basename(filepath, '.html').replace /[_-]/g, ' '
+                subject : $('title').text()
+                html    : html
 
-    #   # Create the template
-    #   api.createTemplate(data, (err, data) ->
-    #     return grunt.log.error(err) if err?
+            # Setup the data to be used in the index file
+            indexData =
+                filepath : filepath
+                htmlHash : swu.generateHash html
 
-    #     fileCount--
+            # Create the template here
+            return swu.createTemplate(versionData).then (template) ->
+                # Decrement the file counter
+                fileCount--
 
-    #     console.dir data
-    #     msg = options.file or 'sendwithus template'
-    #     grunt.log.writeln "Uploaded #{msg} to sendwithus."
+                grunt.log.writeln "Uploaded #{FILEPATH} to sendwithus."
 
-    #     # Last iteration? Execute and return the callback
-    #     return done() if fileCount < 1
-    #   )
+                indexData = _.defaults versionData, indexData
+
+                console.log indexData
+
+                # Update the index with the filepath
+                # swu.updateIndex(template.id, indexData)
+
+                # Last iteration? Execute and return the callback
+                return done() if fileCount < 1
