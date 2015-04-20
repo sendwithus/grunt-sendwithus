@@ -1,0 +1,43 @@
+{
+  "name": "grunt-sendwithus",
+  "version": "0.0.1",
+  "description": "Grunt plugin to deploy your local HTML email templates to sendwithus",
+  "homepage": "https://github.com/sendwithus/grunt-sendwithus",
+  "repository": "https://github.com/sendwithus/grunt-sendwithus",
+  "author": {
+    "name": "sendwithus",
+    "email": "us@sendwithus.com",
+    "url": "https://sendwithus.com"
+  },
+  "keywords": [
+    "gruntplugin",
+    "sendwithus",
+    "send",
+    "with",
+    "us",
+    "email",
+    "transactional"
+  ],
+  "main": "Gruntfile.js",
+  "engines": {
+    "node": ">= 0.10.0",
+    "iojs": ">= 1.0.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "grunt": "~0.4.2",
+    "grunt-contrib-clean": "~0.5.0",
+    "grunt-contrib-coffee": "^0.13.0",
+    "grunt-contrib-nodeunit": "~0.3.0",
+    "load-grunt-tasks": "~0.3.0"
+  },
+  "dependencies": {
+    "coffee-script": "^1.9.1",
+    "lodash": "^3.7.0",
+    "q": "^1.2.0",
+    "request": "^2.55.0"
+  },
+  "scripts": {
+    "test": "grunt test"
+  }
+}
