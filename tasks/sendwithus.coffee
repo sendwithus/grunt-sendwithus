@@ -71,7 +71,6 @@ class Sendwithus
                 accept: 'application/json'
 
         requestOptions = _.defaults options, defaultOptions
-        console.log requestOptions
 
         return requestp(requestOptions).then(
             (data) ->
@@ -159,7 +158,7 @@ class Sendwithus
 
     # Do index stuff
     initIndex: () ->
-        @indexNeedsUpdate = false
+        indexNeedsUpdate = false
 
         if @indexContents.length is 0
             grunt.log.ok 'Index is empty, populating for first run...'
@@ -177,7 +176,7 @@ class Sendwithus
 
                 # If an entry for this template doesn't exist in the index, create one to use
                 if not template.length
-                    @indexNeedsUpdate = true
+                    indexNeedsUpdate = true
                     grunt.log.writeln "--> Template #{apiTemplate.id} not indexed, creating one..."
                     template = apiTemplate
                 else
@@ -223,9 +222,9 @@ class Sendwithus
                         grunt.log.error "Version with id #{version.id} plain text hash matches upstream, continuing..."
                     else
                         grunt.log.error "Template hash upstream doesn't match indexed template hash, updating..."
-                        @indexNeedsUpdate = true
+                        indexNeedsUpdate = true
 
-                    if @indexNeedsUpdate
+                    if indexNeedsUpdate
                         # Assign the HTML and text hashes to the version
                         version.htmlHash = version.htmlHash or htmlHash
                         version.textHash = version.textHash or textHash
@@ -245,9 +244,40 @@ class Sendwithus
 
                 templates.push template if not reason?
 
-            if @indexNeedsUpdate
+            if indexNeedsUpdate
                 @indexContents = templates
                 @writeIndexContents(@indexContents)
+
+    updateIndex: (apiVersion) ->
+        indexNeedsUpdate = false
+
+        # Generate the HTML hash from the api version to compare againts
+        htmlHash = @generateHash apiVersion.html
+
+        # Lookup the api version in the index
+        indexedVersion = @indexContents.filter (v) -> return apiVersion.id is v.id
+
+        # If the indexed version doesnt exist
+        if indexedVersion.length is 0
+            # set the indexed version as teh api version and add it to the index contents
+            indexedVersion = apiVersion
+            indexNeedsUpdate = true
+        else
+            indexedVersion = indexedVersion[0]
+
+            # If the upstream hash is the same as the indexed hash for the version
+            if htmlHash is indexedVersion.htmlHash
+                grunt.log.error "Version with id #{version.id} HTML hash matches upstream, continuing..."
+            else
+                grunt.log.error "Template hash upstream doesn't match indexed template hash, updating..."
+                indexNeedsUpdate = true
+
+        if indexNeedsUpdate
+            delete indexedVersion.html
+            delete indexedVersion.text
+
+            @indexContents.push indexedVersion
+            @writeIndexContents(@indexContents)
 
 
 module.exports = (grunt) ->
@@ -274,29 +304,37 @@ module.exports = (grunt) ->
             $       = cheerio.load html
 
             # Setup the data to send for the template
-            versionData =
+            baseVersionData =
                 name    : basename(filepath, '.html').replace /[_-]/g, ' '
                 subject : $('title').text()
                 html    : html
 
-            # Setup the data to be used in the index file
-            indexData =
-                filepath : filepath
-                htmlHash : swu.generateHash html
-
             # Create the template here
-            return swu.createTemplate(versionData).then (template) ->
-                # Decrement the file counter
+            return swu.createTemplate(baseVersionData).then (template) ->
+                # decrement the file count
                 fileCount--
 
-                grunt.log.writeln "Uploaded #{FILEPATH} to sendwithus."
+                grunt.log.writeln "Uploaded #{filepath} to sendwithus."
 
-                indexData = _.defaults versionData, indexData
+                # get the newly created template and its new version
+                return swu.getTemplateVersions(template).then (versions) =>
+                    version = JSON.parse(versions)[0]
 
-                console.log indexData
+                    # Setup the data to be added to the version for the index file
+                    indexData =
+                        templateId : template.id
+                        id         : version.id
+                        name       : version.name
+                        subject    : version.subject
+                        htmlHash   : swu.generateHash version.html
+                        filepath   : filepath
 
-                # Update the index with the filepath
-                # swu.updateIndex(template.id, indexData)
+                    versionIndexData = _.defaults baseVersionData, indexData
 
-                # Last iteration? Execute and return the callback
-                return done() if fileCount < 1
+                    # Update the index with the filepath
+                    swu.updateIndex(versionIndexData)
+
+                    # Last iteration? Execute and return the callback
+                    if fileCount is 0
+                        grunt.log.ok 'Last iteration'
+                        return done()
