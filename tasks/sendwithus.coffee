@@ -73,10 +73,10 @@ class Sendwithus
         requestOptions = _.defaults options, defaultOptions
 
         return requestp(requestOptions).then(
-            (data) ->
+            (data) =>
                 return data
 
-            (err) ->
+            (err) =>
                 grunt.log.error 'API request failed with statusCode:', err.statusCode
                 return err
         )
@@ -86,10 +86,10 @@ class Sendwithus
         path = 'templates'
 
         return @api(path).then(
-            (data) ->
+            (data) =>
                 return data
 
-            (err) ->
+            (err) =>
                 grunt.log.error "Could not retrieve a list of templates: #{err}"
                 return err
         )
@@ -99,45 +99,76 @@ class Sendwithus
         path = "templates/#{template.id}/versions"
 
         return @api(path).then(
-            (data) ->
+            (data) =>
                 return data
 
-            (err) ->
+            (err) =>
                 grunt.log.error "Could not retrieve a list of template versions: #{err}"
                 return err
         )
 
     # create template in the api, return response
-    createTemplate: (data) ->
+    createTemplate: (data) =>
         path    = 'templates'
         options =
             method : 'POST'
             json   : data
 
         return @api(path, options).then(
-            (data) ->
+            (data) =>
                 return data
 
-            (err) ->
+            (err) =>
                 grunt.log.error "Could not update or create template: #{err}"
                 return err
         )
 
-    # update a template given a template id and version id
-    updateTemplateVersion: (templateId, versionId, data) ->
-        path    = "templates/#{templateId}/versions/#{versionId}"
-        options =
-            method : 'POST'
-            json   : data
+    # update a template in the API and in the cache
+    updateTemplateVersion: (indexedVersion, baseVersionData) ->
+        htmlHash = @generateHash baseVersionData.html
 
-        return @api(path, options).then(
-            (data) ->
-                return data
+        if indexedVersion.htmlHash isnt htmlHash
+            grunt.log.writeln '-> Version hash is different than cached, updating in API'
 
-            (err) ->
-                grunt.log.error "Could not update or create template: #{err}"
-                return err
-        )
+            path    = "templates/#{indexedVersion.templateId}/versions/#{indexedVersion.id}"
+            options =
+                method : 'PUT'
+                json   : baseVersionData
+
+            return @api(path, options).then(
+                (apiVersion) =>
+                    grunt.log.writeln "   └── Updated version #{apiVersion.id} in API"
+
+                    # Update the index entry
+                    position = _.findIndex @indexContents, (v) -> return v.id is apiVersion.id
+
+                    # Setup the data to be added to the version for the index file
+                    indexData =
+                        templateId : indexedVersion.templateId
+                        id         : apiVersion.id
+                        name       : apiVersion.name
+                        subject    : apiVersion.subject
+                        htmlHash   : htmlHash
+                        filepath   : indexedVersion.filepath
+
+
+                    # Merge the base data and index data together
+                    versionIndexData = _.defaults baseVersionData, indexData
+
+                    delete versionIndexData.html
+                    delete versionIndexData.text
+
+                    @indexContents.splice position, 1, versionIndexData
+                    @writeIndexContents(@indexContents)
+
+                    return data
+
+                (err) =>
+                    grunt.log.error "Could not update or create template: #{err}"
+                    return err
+            )
+        else
+            return grunt.log.writeln '   └── Ignoring, version hash is the same'
 
     # Get the contents of the index
     getIndexContents: () ->
@@ -153,7 +184,7 @@ class Sendwithus
 
     # Write the given contents to the index file
     writeIndexContents: (contents) ->
-        grunt.log.ok 'Writing index file contents'
+        grunt.log.ok 'Writing contents to index file...'
         grunt.file.write @indexFile, JSON.stringify(contents, null, 2)
 
     # Do index stuff
@@ -165,7 +196,7 @@ class Sendwithus
 
         # Get all the templates from the api
         return @getTemplates().then (templates) =>
-            grunt.log.writeln "#{@indexContents.length} templates in the local index" if @indexContents.length isnt 0
+            grunt.log.writeln "-> #{@indexContents.length} templates in the local index" if @indexContents.length isnt 0
 
             promises = []
 
@@ -177,10 +208,10 @@ class Sendwithus
                 # If an entry for this template doesn't exist in the index, create one to use
                 if not template.length
                     indexNeedsUpdate = true
-                    grunt.log.writeln "--> Template #{apiTemplate.id} not indexed, creating one..."
+                    grunt.log.writeln "-> Template #{apiTemplate.id} not indexed, creating one..."
                     template = apiTemplate
                 else
-                    grunt.log.writeln "--> Template #{apiTemplate.id} indexed, continuing..."
+                    grunt.log.writeln "-> Template #{apiTemplate.id} indexed, continuing..."
                     template = template[0]
 
                 promises.push @getTemplateVersions(template).then (versions) =>
@@ -300,6 +331,7 @@ module.exports = (grunt) ->
         # Iterate over files to upload
         @filesSrc.forEach (filepath) =>
             options = _.clone opts
+
             html    = grunt.file.read filepath
             $       = cheerio.load html
 
@@ -309,32 +341,41 @@ module.exports = (grunt) ->
                 subject : $('title').text()
                 html    : html
 
-            # Create the template here
-            return swu.createTemplate(baseVersionData).then (template) ->
-                # decrement the file count
-                fileCount--
+            # Get the indexed version by its filepath
+            indexedVersion = swu.indexContents.filter (v) -> return filepath is v.filepath
 
-                grunt.log.writeln "Uploaded #{filepath} to sendwithus."
+            # Check if we have a cached file and need to update it,
+            # or create a new template in the api
+            if indexedVersion.length isnt 0
+                grunt.log.ok "Found template #{filepath} in cache, updating..."
+                swu.updateTemplateVersion indexedVersion[0], baseVersionData
+            else
+                grunt.log.ok "Didn't find template #{filepath} in cache, creating a new one.."
 
-                # get the newly created template and its new version
-                return swu.getTemplateVersions(template).then (versions) =>
-                    version = JSON.parse(versions)[0]
+                # Create the template here
+                swu.createTemplate(baseVersionData).then (template) =>
+                    grunt.log.writeln "-> Uploaded #{filepath} to sendwithus"
 
-                    # Setup the data to be added to the version for the index file
-                    indexData =
-                        templateId : template.id
-                        id         : version.id
-                        name       : version.name
-                        subject    : version.subject
-                        htmlHash   : swu.generateHash version.html
-                        filepath   : filepath
+                    # get the newly created template and its new version
+                    swu.getTemplateVersions(template).then (versions) =>
+                        version = JSON.parse(versions)[0]
 
-                    versionIndexData = _.defaults baseVersionData, indexData
+                        # Setup the data to be added to the version for the index file
+                        indexData =
+                            templateId : template.id
+                            id         : version.id
+                            name       : version.name
+                            subject    : version.subject
+                            htmlHash   : swu.generateHash html
+                            filepath   : filepath
 
-                    # Update the index with the filepath
-                    swu.updateIndex(versionIndexData)
+                        # Merge the base data and index data together
+                        versionIndexData = _.defaults baseVersionData, indexData
 
-                    # Last iteration? Execute and return the callback
-                    if fileCount is 0
-                        grunt.log.ok 'Last iteration'
-                        return done()
+                        # Update the index with the filepath
+                        swu.updateIndex versionIndexData
+
+            # decrement the file count
+            fileCount--
+
+            return done() if fileCount < 1
