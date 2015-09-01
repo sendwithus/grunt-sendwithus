@@ -27,7 +27,7 @@ In your project's Gruntfile, add a section named `sendwithus` to the data object
 ```js
 grunt.initConfig({
   sendwithus: {
-    default:{
+    default: {
       options: {}, // Task-specific options go here
       src: [] // Target-specific file list goes here
     }
