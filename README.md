@@ -27,8 +27,10 @@ In your project's Gruntfile, add a section named `sendwithus` to the data object
 ```js
 grunt.initConfig({
   sendwithus: {
-    options: {}, // Task-specific options go here
-    src: [] // Target-specific file list goes here
+    default:{
+      options: {}, // Task-specific options go here
+      src: [] // Target-specific file list goes here
+    }
   }
 })
 ```
@@ -48,10 +50,12 @@ The API key from your sendwithus account. **Note**: it's recommended that you do
 ```js
 grunt.initConfig({
   sendwithus: {
-    options: {
-      apiKey: 'xxxxxxxxxx'  
-    },
-    src: ['src/testing.html', 'src/**/*.html']
+    default: {
+      options: {
+        apiKey: 'xxxxxxxxxx'  
+      },
+      src: ['src/testing.html', 'src/**/*.html']
+    }
   }
 })
 ```
@@ -60,6 +64,7 @@ grunt.initConfig({
 In lieu of a formal styleguide, take care to maintain the existing coding style. Add unit tests for any new or changed functionality. Lint and test your code using [Grunt](http://gruntjs.com/).
 
 ## Release History
+0.0.2 - Fix the README, and fix named tasks
 0.0.1 - Initial release
 
 ## License
