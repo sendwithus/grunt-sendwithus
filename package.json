@@ -1,6 +1,6 @@
 {
   "name": "grunt-sendwithus",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Grunt plugin to deploy your local HTML email templates to sendwithus",
   "homepage": "https://github.com/sendwithus/grunt-sendwithus",
   "repository": "https://github.com/sendwithus/grunt-sendwithus",
