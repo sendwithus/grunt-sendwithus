@@ -30,21 +30,24 @@ getUserHome = () ->
 requestp = (options) ->
   deferred = Q.defer()
   request options, (err, res, body) ->
-    if err and res.statusCode isnt 200
-      grunt.log.error 'API request failed with statusCode:', res.statusCode
-      deferred.reject err
+    if res.statusCode is 200
+      deferred.resolve body
 
-    deferred.resolve body
+    if err
+      deferred.reject err
+    else
+      deferred.reject res
 
   return deferred.promise
 
 
 class Sendwithus
 
-  constructor: (apiKey) ->
+  constructor: (apiKey, debug=false) ->
     @version = 1
     @url = "https://api.sendwithus.com/api/v#{@version}/"
     @apiKey = apiKey
+    @debug = debug
 
     @indexFile = normalize("#{getUserHome()}/#{pkg.name}.json")
     @indexContents = @getIndexContents()
@@ -59,11 +62,9 @@ class Sendwithus
 
   # API handler
   api: (path, options = {}) ->
-    url = @buildURL(path)
-    # grunt.log.writeln 'Request url:', url
     defaultOptions =
       method: 'GET'
-      url: url
+      url: @buildURL(path)
       auth:
         user: @apiKey
         password: ''
@@ -71,73 +72,44 @@ class Sendwithus
         accept: 'application/json'
 
     requestOptions = _.merge {}, defaultOptions, options
+    requestPromise = requestp(requestOptions)
 
-
-    return requestp(requestOptions).then(
-      (response) ->
-        return response
-
+    return requestPromise.then(
+      (res) ->
+        return res
       (err) ->
-        grunt.log.error 'API request failed with statusCode:', err.statusCode
-        return err
+        throw new Error("API request failed: status #{err.statusCode}, #{err.body}")
     )
 
   # Get all templates from the API
   getTemplates: () ->
-    path = 'templates'
-
-    return @api(path).then(
-      (response) ->
-        return response
-
-      (err) ->
-        grunt.log.error "Could not retrieve a list of templates: #{err}"
-        return err
-    )
+    return @api('templates')
 
   # Get all templates from the API
   getTemplateVersions: (template) ->
-    path = "templates/#{template.id}/versions"
-
-    return @api(path).then(
-      (response) ->
-        return response
-
-      (err) ->
-        grunt.log.error "Could not retrieve a list of template versions: #{err}"
-        return err
-    )
+    return @api("templates/#{template.id}/versions")
 
   # create template in the api, return response
   createTemplate: (jsonData) =>
-    path    = 'templates'
-    options =
+    return @api('templates', {
       method: 'POST'
       json: jsonData
-
-    return @api(path, options).then(
-      (response) ->
-        return response
-
-      (err) ->
-        grunt.log.error "Could not update or create template: #{err}"
-        return err
-    )
+    })
 
   # update a template in the API and in the cache
   updateTemplateVersion: (indexedVersion, baseVersionData) ->
     htmlHash = @generateHash baseVersionData.html
 
-    if indexedVersion.htmlHash isnt htmlHash
-      grunt.log.writeln '-> Version hash is different than cached, updating in API'
+    if indexedVersion?.htmlHash isnt htmlHash
+      grunt.log.writeln '   └── Version hash is different than cached, updating in API'
 
       path = "templates/#{indexedVersion.templateId}/versions/#{indexedVersion.id}"
       options =
         method: 'PUT'
         json: baseVersionData
 
-      return @api(path, options).then(
-        (apiVersion) =>
+      return @api(path, options)
+        .then (apiVersion) =>
           grunt.log.writeln "   └── Updated version #{apiVersion.id} in API"
 
           # Update the index entry
@@ -163,11 +135,6 @@ class Sendwithus
           @writeIndexContents(@indexContents)
 
           return data
-
-        (err) ->
-          grunt.log.error "Could not update or create template: #{err}"
-          return err
-      )
     else
       return grunt.log.writeln '   └── Ignoring, version hash is the same'
 
@@ -175,17 +142,17 @@ class Sendwithus
   getIndexContents: () ->
     # Check if the local cache file exists or not
     if not grunt.file.exists @indexFile
-      grunt.log.ok "Cache file doesn't exist, creating..."
+      grunt.log.ok "Cache file doesn't exist, creating…"
       grunt.file.write @indexFile, '[]' # write a blank file with an array for valid JSON
     else
-      grunt.log.ok 'Cache file exists, continuing...'
+      grunt.log.ok 'Cache file exists, continuing…'
 
     # Read the contents of the index file
     return grunt.file.readJSON @indexFile
 
   # Write the given contents to the index file
   writeIndexContents: (contents) ->
-    grunt.log.ok 'Writing contents to index file...'
+    grunt.log.ok 'Writing contents to index file…'
     grunt.file.write @indexFile, JSON.stringify(contents, null, 2)
 
   updateIndex: (apiVersion) ->
@@ -206,10 +173,10 @@ class Sendwithus
       indexedVersion = indexedVersion[0]
 
       # If the upstream hash is the same as the indexed hash for the version
-      if htmlHash is indexedVersion.htmlHash
-        grunt.log.error "Version with id #{version.id} HTML hash matches upstream, continuing..."
+      if htmlHash is indexedVersion.htmlHashå
+        grunt.log.error "Version with id #{indexedVersion.id} HTML hash matches upstream, continuing…"
       else
-        grunt.log.error "Template hash upstream doesn't match indexed template hash, updating..."
+        grunt.log.error "Template hash upstream doesn't match indexed template hash, updating…"
         indexNeedsUpdate = true
 
     if indexNeedsUpdate
@@ -232,10 +199,15 @@ module.exports = (grunt) ->
     # Check if the apiKey was provided
     if not opts.hasOwnProperty 'apiKey' or not opts.apiKey?
       # return an error message from the plugin
-      return grunt.log.error 'API key not found in the task options'
+      msg = 'API key not found in the task options'
+      grunt.log.error msg
+      grunt.fail.warn msg
+
+    if opts.hasOwnProperty 'debug' or opts.debug?
+      grunt.log.ok 'Running in debug mode!'
 
     # Generate a new Sendwithus instance with the apiKey
-    swu = new Sendwithus(opts.apiKey)
+    swu = new Sendwithus(opts.apiKey, opts.debug)
 
     # Iterate over files to upload
     @filesSrc.forEach (filepath) ->
@@ -254,19 +226,19 @@ module.exports = (grunt) ->
       # Check if we have a cached file and need to update it,
       # or create a new template in the api
       if indexedVersion.length isnt 0
-        grunt.log.ok "Found template #{filepath} in cache, updating..."
+        grunt.log.ok "Found template #{filepath} in cache, updating…"
 
         swu.updateTemplateVersion(indexedVersion[0], baseVersionData)
 
         # decrement the file count
         fileCount--
       else
-        grunt.log.ok "Didn't find template #{filepath} in cache, creating a new one..."
+        grunt.log.ok "Didn't find template #{filepath} in cache, creating a new one…"
 
         # Create the template here
         swu.createTemplate(baseVersionData)
           .then (template) ->
-            grunt.log.writeln "-> Uploaded #{filepath} to sendwithus"
+            grunt.log.ok "Uploaded #{filepath} to sendwithus"
 
             # get the newly created template and its new version
             return swu.getTemplateVersions(template)
@@ -275,19 +247,21 @@ module.exports = (grunt) ->
 
                 # Setup the data to be added to the version for the index file
                 indexData =
-                  templateId : template.id
-                  id : version.id
-                  name : version.name
-                  subject : version.subject
-                  htmlHash : swu.generateHash(html)
-                  filepath : filepath
+                  templateId: template.id
+                  id: version.id
+                  name: version.name
+                  subject: version.subject
+                  htmlHash: swu.generateHash(html)
+                  filepath: filepath
 
                 # Merge the base data and index data together
                 versionIndexData = _.merge {}, indexData, baseVersionData
 
                 # Update the index with the filepath
                 return swu.updateIndex versionIndexData
-          .then () ->
+          .catch (err) ->
+            grunt.log.error err
+          .done () ->
             # decrement the file count
             fileCount--
 

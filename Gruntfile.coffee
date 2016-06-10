@@ -22,6 +22,7 @@ module.exports = (grunt) ->
       default:
         options:
           apiKey: config.apiKey
+          debug: true
         src: ['test/fixtures/*.html']
     nodeunit:
       tests: ['test/*_test.js']

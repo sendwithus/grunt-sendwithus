@@ -25,11 +25,20 @@ exports.sendwithus =
     # setup here if necessary
     done()
 
-  default_options: (test) ->
+  template_successful: (test) ->
     test.expect 1
 
     actual = grunt.file.read 'test/fixtures/template1.html'
     expected = grunt.file.read 'test/expected/template1.html'
-    test.equal actual, expected, 'should describe what the default behavior is.'
+    test.equal actual, expected, 'Template should match'
+
+    test.done()
+
+  template_successful_with_snippet: (test) ->
+    test.expect 1
+
+    actual = grunt.file.read 'test/fixtures/template2.html'
+    expected = grunt.file.read 'test/expected/template2.html'
+    test.equal actual, expected, 'Template should match including snippet content'
 
     test.done()
