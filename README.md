@@ -1,3 +1,9 @@
+[![experimental](http://badges.github.io/stability-badges/dist/experimental.svg)](http://github.com/badges/stability-badges)
+
+### Caveat Emptor
+
+This is an experimental plugin and is not yet fully supported by the Sendwithus team.
+
 grunt-sendwithus
 ===
 
