@@ -9,8 +9,6 @@ grunt-sendwithus
 
 > Grunt plugin to deploy your local HTML email templates to [sendwithus](https://sendwithus.com)
 
-**NOT OFFICIALLY SUPPORTED, YOUR MILEAGE MAY VARY**
-
 ## Getting Started
 
 This plugin requires Grunt.
