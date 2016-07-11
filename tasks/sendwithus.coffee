@@ -103,45 +103,12 @@ class Sendwithus
 
   # update a template in the API and in the cache
   updateTemplateVersion: (indexedVersion, baseVersionData) ->
-    htmlHash = @generateHash baseVersionData.html
-
-    if indexedVersion?.htmlHash isnt htmlHash
-      grunt.log.writeln '   └── Version hash is different than cached, updating in API'
-
-      path = "templates/#{indexedVersion.templateId}/versions/#{indexedVersion.id}"
-      options =
-        method: 'PUT'
-        json: baseVersionData
-
-      return @api(path, options)
-        .then (apiVersion) =>
-          grunt.log.writeln "   └── Updated version #{apiVersion.id} in API"
-
-          # Update the index entry
-          position = _.findIndex @indexContents, (v) -> return v.id is apiVersion.id
-
-          # Setup the data to be added to the version for the index file
-          indexData =
-            templateId: indexedVersion.templateId
-            id: apiVersion.id
-            name: apiVersion.name
-            subject: apiVersion.subject
-            htmlHash: htmlHash
-            filepath: indexedVersion.filepath
-
-
-          # Merge the base data and index data together
-          versionIndexData = _.merge {}, indexData, baseVersionData
-
-          delete versionIndexData.html
-          delete versionIndexData.text
-
-          @indexContents.splice position, 1, versionIndexData
-          @writeIndexContents(@indexContents)
-
-          return data
-    else
-      return grunt.log.writeln '   └── Ignoring, version hash is the same'
+    grunt.log.writeln '   └── Version hash is different than cached, updating in API'
+    path = "templates/#{indexedVersion.templateId}/versions/#{indexedVersion.id}"
+    return @api(path, {
+      method: "PUT"
+      json: baseVersionData
+    })
 
   # Get the contents of the index
   getIndexContents: () ->
@@ -232,11 +199,41 @@ module.exports = (grunt) ->
       # or create a new template in the api
       if indexedVersion.length isnt 0
         grunt.log.ok "Found template #{filepath} in cache, updating…"
+        htmlHash = swu.generateHash baseVersionData.html
+        if indexedVersion?[0]?.htmlHash isnt htmlHash
+          swu.updateTemplateVersion(indexedVersion[0], baseVersionData)
+            .then (apiVersion) ->
+              grunt.log.ok "   └── Updated version #{apiVersion.id} in API"
 
-        swu.updateTemplateVersion(indexedVersion[0], baseVersionData)
+              # Update the index entry
+              position = _.findIndex swu.indexContents, (v) -> return v.id is apiVersion.id
 
-        # decrement the file count
-        fileCount--
+              # Setup the data to be added to the version for the index file
+              indexData =
+                templateId: indexedVersion[0].templateId
+                id: apiVersion.id
+                name: apiVersion.name
+                subject: apiVersion.subject
+                htmlHash: htmlHash
+                filepath: indexedVersion[0].filepath
+
+
+              # Merge the base data and index data together
+              versionIndexData = _.merge {}, indexData, baseVersionData
+
+              delete versionIndexData.html
+              delete versionIndexData.text
+
+              swu.indexContents.splice position, 1, versionIndexData
+              return swu.writeIndexContents(swu.indexContents)
+            .catch (err) ->
+              grunt.log.error err
+            .done () ->
+              # decrement the file count
+              fileCount--
+        else
+          fileCount--
+          return grunt.log.writeln '   └── Ignoring, version hash is the same'
       else
         grunt.log.ok "Didn't find template #{filepath} in cache, creating a new one…"
 
