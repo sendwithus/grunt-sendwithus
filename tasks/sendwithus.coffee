@@ -70,12 +70,17 @@ class Sendwithus
         password: ''
       headers:
         accept: 'application/json'
+        'X-SWU-API-CLIENT': "grunt-#{pkg.version}"
+
+    url = defaultOptions.url
+    grunt.log.ok "API hit: #{url}"
 
     requestOptions = _.merge {}, defaultOptions, options
     requestPromise = requestp(requestOptions)
 
     return requestPromise.then(
       (res) ->
+        grunt.log.ok "API success: #{defaultOptions.url}"
         return res
       (err) ->
         throw new Error("API request failed: status #{err.statusCode}, #{err.body}")
