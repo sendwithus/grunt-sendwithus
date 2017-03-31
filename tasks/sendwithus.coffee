@@ -125,7 +125,6 @@ class Sendwithus
         grunt.file.write @indexFile, '[]' # write a blank file with an array for valid JSON
     else
       grunt.log.ok 'Cache file exists, continuing…'
-    grunt.fail.warn "bailing out, cause testing"
     # Read the contents of the index file
     return grunt.file.readJSON @indexFile
 
