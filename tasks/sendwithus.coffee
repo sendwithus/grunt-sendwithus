@@ -49,7 +49,7 @@ class Sendwithus
     @apiKey = apiKey
     @debug = debug
 
-    @indexFile = normalize("#{getUserHome()}/#{pkg.name}.json")
+    @indexFile = normalize("#{pkg.name}.json")
     @indexContents = @getIndexContents()
 
   # Generate an MD5 hash from an arbitrary string
@@ -114,11 +114,17 @@ class Sendwithus
   getIndexContents: () ->
     # Check if the local cache file exists or not
     if not grunt.file.exists @indexFile
-      grunt.log.ok "Cache file doesn't exist, creating…"
-      grunt.file.write @indexFile, '[]' # write a blank file with an array for valid JSON
+      grunt.log.ok "Cache file doesn't exist"
+      legacyPath = "#{getUserHome()}/#{pkg.name}.json"
+      if grunt.file.exists legacyPath
+        legacyContents = grunt.file.readJSON legacyPath
+        grunt.log.ok "Found legacy manifest, creating project manifest"
+        @writeIndexContents(legacyContents)
+      else
+        grunt.log.ok "Creating project manifest"
+        grunt.file.write @indexFile, '[]' # write a blank file with an array for valid JSON
     else
       grunt.log.ok 'Cache file exists, continuing…'
-
     # Read the contents of the index file
     return grunt.file.readJSON @indexFile
 
